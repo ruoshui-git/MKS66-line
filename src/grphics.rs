@@ -3,15 +3,15 @@ mod graphics
     use std::fs::File;
     use std::io::{self, prelude::*, BufWriter};
     use std::path::Path;
-
+    use std::convert::TryInto;
 
     #[derive(Copy, Clone)]
     struct RGBTriple
     {
-        red: f64,
-        blue: f64,
-        green: f64,
-    };
+        red: u16,
+        blue: u16,
+        green: u16,
+    }
 
     pub struct PPMImg
     {
@@ -21,36 +21,42 @@ mod graphics
         fg_color: RGBTriple,
         bg_color: RGBTriple,
         data: Vec<RGBTriple>,
-    };
+    }
 
     impl PPMImg
     {
         
         fn index(&self, x: u32, y:u32) -> u32
         {
-            x * self.width + y
+            x * self.width as u32 + y
         }
 
-        pub fn new(height, width, depth)-> Self
+        pub fn new(height: u32, width: u32, depth: u16)-> Self
         {
             PPMImg
             {
                 height,
                 width,
                 depth,
-                fg_color = RGBTriple
+                fg_color: RGBTriple
                 {
-                    red = depth,
-                    green = depth,
-                    blue = depth,
-                }
-                bg_color = RGBTriple
+                    red: depth,
+                    green: depth,
+                    blue: depth,
+                },
+                bg_color: RGBTriple
                 {
-                    red = 0,
-                    green = 0,
-                    blue = 0,
-                }
-                data = vec![PPMImg{ 0, 0, 0 }; width * height],
+                    red: 0,
+                    green: 0,
+                    blue: 0,
+                },
+                data: vec![ RGBTriple
+                { 
+                    red: 0,
+                    green: 0,
+                    blue: 0 
+                }; (width * height).try_into().unwrap()
+                ],
             }
         }
 
@@ -61,16 +67,16 @@ mod graphics
 
         fn create_file(filepath: &str) -> BufWriter<File>
         {
-            let path = Path::new(str);
+            let path = Path::new(filepath);
             let display = path.display();
-            let mut file = match File::create(&path)
+            match File::create(&path)
             {
-                Err(why) => panic!("Could not create {}: {}", display, why)
+                Err(why) => panic!("Could not create {}: {}", display, why),
                 Ok(file) => BufWriter::new(file),
             }
         }
 
-        pub fn write_binary(&self, filepath: &str) -> io::Result
+        pub fn write_binary(&self, filepath: &str) -> io::Result<()>
         {
             let mut file = create_file(filepath);
             writeln!(file, "P6")?;
@@ -79,15 +85,36 @@ mod graphics
             {
                 for t in self.data.iter()
                 {
-                    file.write(t.red as u8);
-                    file.write(t.green as u8);
-                    file.write(t.blue as u8);
+                    file.write(t.red as u8)?;
+                    file.write(t.green as u8)?;
+                    file.write(t.blue as u8)?;
                 }
             }
             else
             {
-
+                for t in self.data.iter()
+                {
+                    file.write_all(&(t.red.to_be_bytes()))?;
+                    file.write_all(&(t.green.to_be_bytes()))?;
+                    file.write_all(&(t.blue.to_be_bytes()))?;
+                }
+                file.flush()?;
+                Ok(())
             }
         }
+
+        pub fn write_ascii(&self, filepath: &str) -> io::Result<()>
+        {
+            let mut file = create_file(filepath);
+            writeln!(file, "P3")?;
+            writeln!(file, "{} {} {}", self.width, self.height, self.depth)?;
+            for t in self.data.iter()
+            {
+                writeln!(file, "{} {} {}", t.red, t.green, t.blue)?;
+            }
+            file.flush();
+            Ok(())
+        }
+
     }
 }
