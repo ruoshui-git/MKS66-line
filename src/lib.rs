@@ -1,4 +1,4 @@
-mod graphics;
+pub mod graphics;
 
 /*
 #[cfg(test)]
