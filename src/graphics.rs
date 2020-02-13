@@ -1,9 +1,9 @@
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
-struct RGBTriple {
-    red: u16,
-    blue: u16,
-    green: u16,
+pub struct RGBTriple {
+    pub red: u16,
+    pub blue: u16,
+    pub green: u16,
 }
 
 use std::convert::TryInto;
@@ -16,8 +16,8 @@ pub struct PPMImg {
     height: u32,
     width: u32,
     depth: u16, // max = 2^16
-    fg_color: RGBTriple,
-    bg_color: RGBTriple,
+    pub fg_color: RGBTriple,
+    pub bg_color: RGBTriple,
     data: Vec<RGBTriple>,
 }
 
@@ -34,36 +34,92 @@ fn create_file(filepath: &str) -> BufWriter<File> {
 #[allow(dead_code)]
 impl PPMImg {
     pub fn draw_line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) -> () {
-        // swap variables if needed
+        // swap variables if needed, since we are always going from left to right
         let (x0, y0, x1, y1) = if x0 > x1 {
             (x1, y1, x0, y0)
         } else {
             (x0, y0, x1, y1)
         };
 
+        // convert floats to ints
         let (x0, y0, x1, y1) = (x0 as i32, y0 as i32, x1 as i32, y1 as i32);
         let (mut x, mut y) = (x0, y0);
 
-        // find A and B
-        let (dy, ndx) = (y1 - y0, -(x1 - x0));
-        // 1st octant
-        let mut d = 2 * dy + ndx;
-        while x < x1 {
-            self.plot(x, y);
-            if d > 0
-            {
-                y = y + 1;
-                d = d + ndx;
+        let (a, b) = (y1 - y0, -(x1 - x0));
+
+        // deal with special cases:
+        if b == 0 {
+            // vertical line
+            let (y0, y1) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
+
+            for y in y0..(y1 + 1) {
+                self.plot(x, y);
             }
-            x = x + 1;
-            d = d + dy;
+        }
+
+        if a == 0 {
+            // horizontal line
+            // x vals are already in the right order, so we don't flip
+            for x in x0..(x1 + 1) {
+                self.plot(x, y);
+            }
+        }
+
+        // find A and B
+        let m = -a / b;
+
+        println!("slope: {}", m);
+
+        if 1 <= m {
+            // 2nd octant
+            let mut d = 2 * b + a;
+            while y < y1 {
+                self.plot(x, y);
+                if d < 0 {
+                    x = x + 1;
+                    d = d + a;
+                }
+                y = y + 1;
+                d = d + b;
+            }
+        } else if 0 < m {
+            // 1st octant
+            let mut d = 2 * a + b;
+            while x < x1 {
+                self.plot(x, y);
+                if d > 0 {
+                    y = y + 1;
+                    d = d + b;
+                }
+                x = x + 1;
+                d = d + a;
+            }
+        } else if -1 <= m {
+            let mut d = 2 * a + b;
+            while x < x1 {
+                println!("Plotting");
+                self.plot(x, y);
+                if d > 0 {
+                    y = y - 1;
+                    d = d + b;
+                }
+                x = x + 1;
+                d = d + a;
+            }
+        } else {
+            // m < -1
         }
     }
 
     pub fn plot(&mut self, x: i32, y: i32) -> () {
-        if x < 0 || y < 0 {
+        if x < 0
+            || y < 0
+            || x >= (self.width).try_into().unwrap()
+            || y >= (self.height).try_into().unwrap()
+        {
             return ();
         }
+        println!("plotting ({}, {})", x, y);
         // now we know that x and y are positive, we can cast without worry
         let index = self.index(x as u32, y as u32);
         self.data[index] = self.fg_color;
@@ -98,7 +154,8 @@ impl PPMImg {
     }
 
     fn index(&self, x: u32, y: u32) -> usize {
-        (x * self.width as u32 + y).try_into().unwrap()
+        println!("Index: {}", x * self.width as u32 + y);
+        (y * self.width as u32 + x).try_into().unwrap()
     }
 
     pub fn write_binary(&self, filepath: &str) -> io::Result<()> {
