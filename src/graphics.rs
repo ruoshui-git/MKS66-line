@@ -1,3 +1,8 @@
+use std::convert::Into;
+use std::f64;
+use std::i32;
+
+
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
 pub struct RGBTriple {
@@ -31,86 +36,15 @@ fn create_file(filepath: &str) -> BufWriter<File> {
     }
 }
 
+impl From<f64> for i32 {
+    fn from(n: i32) -> Self
+    {
+        return n as i32;
+    }
+}
+
 #[allow(dead_code)]
 impl PPMImg {
-    pub fn draw_line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) -> () {
-        // swap variables if needed, since we are always going from left to right
-        let (x0, y0, x1, y1) = if x0 > x1 {
-            (x1, y1, x0, y0)
-        } else {
-            (x0, y0, x1, y1)
-        };
-
-        // convert floats to ints
-        let (x0, y0, x1, y1) = (x0 as i32, y0 as i32, x1 as i32, y1 as i32);
-        let (mut x, mut y) = (x0, y0);
-
-        let (a, b) = (y1 - y0, -(x1 - x0));
-
-        // deal with special cases:
-        if b == 0 {
-            // vertical line
-            let (y0, y1) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
-
-            for y in y0..(y1 + 1) {
-                self.plot(x, y);
-            }
-        }
-
-        if a == 0 {
-            // horizontal line
-            // x vals are already in the right order, so we don't flip
-            for x in x0..(x1 + 1) {
-                self.plot(x, y);
-            }
-        }
-
-        // find A and B
-        let m = -a / b;
-
-        println!("slope: {}", m);
-
-        if 1 <= m {
-            // 2nd octant
-            let mut d = 2 * b + a;
-            while y < y1 {
-                self.plot(x, y);
-                if d < 0 {
-                    x = x + 1;
-                    d = d + a;
-                }
-                y = y + 1;
-                d = d + b;
-            }
-        } else if 0 < m {
-            // 1st octant
-            let mut d = 2 * a + b;
-            while x < x1 {
-                self.plot(x, y);
-                if d > 0 {
-                    y = y + 1;
-                    d = d + b;
-                }
-                x = x + 1;
-                d = d + a;
-            }
-        } else if -1 <= m {
-            let mut d = 2 * a + b;
-            while x < x1 {
-                println!("Plotting");
-                self.plot(x, y);
-                if d > 0 {
-                    y = y - 1;
-                    d = d + b;
-                }
-                x = x + 1;
-                d = d + a;
-            }
-        } else {
-            // m < -1
-        }
-    }
-
     pub fn plot(&mut self, x: i32, y: i32) -> () {
         if x < 0
             || y < 0
@@ -123,6 +57,110 @@ impl PPMImg {
         // now we know that x and y are positive, we can cast without worry
         let index = self.index(x as u32, y as u32);
         self.data[index] = self.fg_color;
+    }
+
+    pub fn draw_line<T: Into<i32> + Copy>(&mut self, x0: T, y0: T, x1: T, y1: T) {
+        // convert floats to ints; using explicit type conversion
+        // let (x0:i32, y0:i32, x1:i32, y1:i32) = (x0.try_into().unwrap(), y0.try_into().unwrap() , x1.try_into().unwrap(), y1.try_into().unwrap());
+        let x0: i32 = x0.try_into().unwrap();
+        let y0: i32 = y0.try_into().unwrap();
+        let x1: i32 = x1.try_into().unwrap();
+        let y1: i32 = y1.try_into().unwrap();
+
+        // swap variables if needed, since we are always going from left to right
+        let (x0, y0, x1, y1) = if x0 > x1 {
+            (x1, y1, x0, y0)
+        } else {
+            (x0, y0, x1, y1)
+        };
+
+        let (mut x, mut y) = (x0, y0);
+
+        let (dely, ndelx) = (y1 - y0, -(x1 - x0));
+
+        // deal with special cases:
+        if ndelx == 0 {
+            // vertical line
+            let (y0, y1) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
+
+            for y in y0..(y1 + 1) {
+                self.plot(x, y);
+            }
+
+            return ();
+        }
+
+        if dely == 0 {
+            // horizontal line
+            // x vals are already in the right order, so we don't flip
+            for x in x0..(x1 + 1) {
+                self.plot(x, y);
+            }
+            return ();
+        }
+
+        // find A and B
+        let m = -dely / ndelx;
+
+        println!("slope: {}", m);
+
+        if dely > 0 {
+            // slope > 0
+
+            if dely > -ndelx {
+                // 2nd octant
+                let mut d = 2 * ndelx + dely;
+                while y < y1 {
+                    self.plot(x, y);
+                    if d < 0 {
+                        x = x + 1;
+                        d = d + dely;
+                    }
+                    y = y + 1;
+                    d = d + ndelx;
+                }
+            } else {
+                // 1st octant
+                let mut d = 2 * dely + ndelx;
+                while x < x1 {
+                    self.plot(x, y);
+                    if d > 0 {
+                        y = y + 1;
+                        d = d + ndelx;
+                    }
+                    x = x + 1;
+                    d = d + dely;
+                }
+            }
+        } else {
+            // slope < 0
+
+            if dely < -ndelx {
+                // 8th octant
+                let mut d = 2 * dely + ndelx;
+                while x < x1 {
+                    println!("Plotting");
+                    self.plot(x, y);
+                    if d < 0 {
+                        y = y - 1;
+                        d = d - ndelx;
+                    }
+                    x = x + 1;
+                    d = d + dely;
+                }
+            } else {
+                let mut d = 2 * ndelx + dely;
+                while y > y1 {
+                    self.plot(x, y);
+                    if d < 0 {
+                        x = x + 1;
+                        d = d - dely;
+                    }
+                    y = y - 1;
+                    d = d + ndelx;
+                }
+            }
+        }
     }
 
     /// Createa new PPMImg
