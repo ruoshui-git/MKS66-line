@@ -1,12 +1,16 @@
-
 .PHONY: run convert clean
+
+CONV = magick
 
 run:
 	cargo run
+	$(CONV) img.ppm img.png
+
+gen:
+	cargo run
 
 convert:
-	cargo run
-	convert img.ppm img.png
+	$(CONV) img.ppm img.png
 
 clean:
 	cargo clean

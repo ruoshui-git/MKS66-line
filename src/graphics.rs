@@ -1,11 +1,9 @@
+use log::debug;
 use std::convert::Into;
-use std::f64;
-use std::i32;
-
 
 #[allow(dead_code)]
 #[derive(Copy, Clone)]
-pub struct RGBTriple {
+pub struct RGB {
     pub red: u16,
     pub blue: u16,
     pub green: u16,
@@ -21,9 +19,9 @@ pub struct PPMImg {
     height: u32,
     width: u32,
     depth: u16, // max = 2^16
-    pub fg_color: RGBTriple,
-    pub bg_color: RGBTriple,
-    data: Vec<RGBTriple>,
+    pub fg_color: RGB,
+    pub bg_color: RGB,
+    data: Vec<RGB>,
 }
 
 #[allow(dead_code)]
@@ -36,14 +34,71 @@ fn create_file(filepath: &str) -> BufWriter<File> {
     }
 }
 
-impl From<f64> for i32 {
-    fn from(n: i32) -> Self
-    {
-        return n as i32;
+// impl constructor and exporter
+#[allow(dead_code)]
+impl PPMImg {
+    /// Createa new PPMImg
+    /// Default fg color is white, bg_color is lack
+    pub fn new(height: u32, width: u32, depth: u16) -> PPMImg {
+        PPMImg {
+            height,
+            width,
+            depth,
+            fg_color: RGB {
+                red: depth,
+                green: depth,
+                blue: depth,
+            },
+            bg_color: RGB {
+                red: 0,
+                green: 0,
+                blue: 0,
+            },
+            data: vec![
+                RGB {
+                    red: depth,
+                    green: depth,
+                    blue: depth,
+                };
+                (width * height).try_into().unwrap()
+            ],
+        }
+    }
+
+    pub fn write_binary(&self, filepath: &str) -> io::Result<()> {
+        let mut file = create_file(filepath);
+        writeln!(file, "P6")?;
+        writeln!(file, "{} {} {}", self.width, self.height, self.depth)?;
+        if self.depth < 256 {
+            for t in self.data.iter() {
+                file.write(&[t.green as u8])?;
+                file.write(&[t.green as u8])?;
+                file.write(&[t.blue as u8])?;
+            }
+        } else {
+            for t in self.data.iter() {
+                file.write_all(&(t.red.to_be_bytes()))?;
+                file.write_all(&(t.green.to_be_bytes()))?;
+                file.write_all(&(t.blue.to_be_bytes()))?;
+            }
+        }
+
+        file.flush()?;
+        Ok(())
+    }
+    pub fn write_ascii(&self, filepath: &str) -> io::Result<()> {
+        let mut file = create_file(filepath);
+        writeln!(file, "P3")?;
+        writeln!(file, "{} {} {}", self.width, self.height, self.depth)?;
+        for t in self.data.iter() {
+            writeln!(file, "{} {} {}", t.red, t.green, t.blue)?;
+        }
+        file.flush()?;
+        Ok(())
     }
 }
 
-#[allow(dead_code)]
+// implement point plotting
 impl PPMImg {
     pub fn plot(&mut self, x: i32, y: i32) -> () {
         if x < 0
@@ -53,19 +108,34 @@ impl PPMImg {
         {
             return ();
         }
-        println!("plotting ({}, {})", x, y);
+        // debug!("plotting ({}, {})", x, y);
         // now we know that x and y are positive, we can cast without worry
         let index = self.index(x as u32, y as u32);
         self.data[index] = self.fg_color;
     }
+    fn index(&self, x: u32, y: u32) -> usize {
+        // debug!("Index: {}", x * self.width as u32 + y);
+        (y * self.width as u32 + x).try_into().unwrap()
+    }
+}
 
-    pub fn draw_line<T: Into<i32> + Copy>(&mut self, x0: T, y0: T, x1: T, y1: T) {
+// impl line algorithm
+impl PPMImg {
+    fn draw_line_small_slope(x0: i32, y0: i32, x1: i32, y1: i32) {
+        let (dx, dy) = (x1 - x0, y1 - y0);
+        
+
+
+    }
+
+    /// Draw a line from (x0, y0) to (x1, y1)
+    pub fn draw_line<T: Into<f64> + Copy>(&mut self, x0: T, y0: T, x1: T, y1: T) {
         // convert floats to ints; using explicit type conversion
         // let (x0:i32, y0:i32, x1:i32, y1:i32) = (x0.try_into().unwrap(), y0.try_into().unwrap() , x1.try_into().unwrap(), y1.try_into().unwrap());
-        let x0: i32 = x0.try_into().unwrap();
-        let y0: i32 = y0.try_into().unwrap();
-        let x1: i32 = x1.try_into().unwrap();
-        let y1: i32 = y1.try_into().unwrap();
+        let x0: i32 = TryInto::<f64>::try_into(x0).unwrap() as i32;
+        let y0: i32 = TryInto::<f64>::try_into(y0).unwrap() as i32;
+        let x1: i32 = TryInto::<f64>::try_into(x1).unwrap() as i32;
+        let y1: i32 = TryInto::<f64>::try_into(y1).unwrap() as i32;
 
         // swap variables if needed, since we are always going from left to right
         let (x0, y0, x1, y1) = if x0 > x1 {
@@ -100,17 +170,19 @@ impl PPMImg {
         }
 
         // find A and B
-        let m = -dely / ndelx;
+        // let m  = -dely as f64 / ndelx as f64;
 
-        println!("slope: {}", m);
+        // debug!("slope: {}", m);
 
         if dely > 0 {
             // slope > 0
 
             if dely > -ndelx {
                 // 2nd octant
+                debug!("octant 2");
+
                 let mut d = 2 * ndelx + dely;
-                while y < y1 {
+                while y <= y1 {
                     self.plot(x, y);
                     if d < 0 {
                         x = x + 1;
@@ -121,8 +193,10 @@ impl PPMImg {
                 }
             } else {
                 // 1st octant
+                debug!("octant 1");
+
                 let mut d = 2 * dely + ndelx;
-                while x < x1 {
+                while x <= x1 {
                     self.plot(x, y);
                     if d > 0 {
                         y = y + 1;
@@ -135,11 +209,14 @@ impl PPMImg {
         } else {
             // slope < 0
 
-            if dely < -ndelx {
+            if dely <= -ndelx {
                 // 8th octant
+                // debug!("octant 8", );
+
                 let mut d = 2 * dely + ndelx;
+                // let mut d = 2 * ndelx + dely;
                 while x < x1 {
-                    println!("Plotting");
+                    // debug!("Plotting");
                     self.plot(x, y);
                     if d < 0 {
                         y = y - 1;
@@ -149,8 +226,10 @@ impl PPMImg {
                     d = d + dely;
                 }
             } else {
+                debug!("octant 7",);
+
                 let mut d = 2 * ndelx + dely;
-                while y > y1 {
+                while y >= y1 {
                     self.plot(x, y);
                     if d < 0 {
                         x = x + 1;
@@ -161,70 +240,5 @@ impl PPMImg {
                 }
             }
         }
-    }
-
-    /// Createa new PPMImg
-    /// Default fg color is white, bg_color is lack
-    pub fn new(height: u32, width: u32, depth: u16) -> PPMImg {
-        PPMImg {
-            height,
-            width,
-            depth,
-            fg_color: RGBTriple {
-                red: depth,
-                green: depth,
-                blue: depth,
-            },
-            bg_color: RGBTriple {
-                red: 0,
-                green: 0,
-                blue: 0,
-            },
-            data: vec![
-                RGBTriple {
-                    red: depth,
-                    green: depth,
-                    blue: depth,
-                };
-                (width * height).try_into().unwrap()
-            ],
-        }
-    }
-
-    fn index(&self, x: u32, y: u32) -> usize {
-        println!("Index: {}", x * self.width as u32 + y);
-        (y * self.width as u32 + x).try_into().unwrap()
-    }
-
-    pub fn write_binary(&self, filepath: &str) -> io::Result<()> {
-        let mut file = create_file(filepath);
-        writeln!(file, "P6")?;
-        writeln!(file, "{} {} {}", self.width, self.height, self.depth)?;
-        if self.depth < 256 {
-            for t in self.data.iter() {
-                file.write(&[t.green as u8])?;
-                file.write(&[t.green as u8])?;
-                file.write(&[t.blue as u8])?;
-            }
-        } else {
-            for t in self.data.iter() {
-                file.write_all(&(t.red.to_be_bytes()))?;
-                file.write_all(&(t.green.to_be_bytes()))?;
-                file.write_all(&(t.blue.to_be_bytes()))?;
-            }
-        }
-
-        file.flush()?;
-        Ok(())
-    }
-    pub fn write_ascii(&self, filepath: &str) -> io::Result<()> {
-        let mut file = create_file(filepath);
-        writeln!(file, "P3")?;
-        writeln!(file, "{} {} {}", self.width, self.height, self.depth)?;
-        for t in self.data.iter() {
-            writeln!(file, "{} {} {}", t.red, t.green, t.blue)?;
-        }
-        file.flush()?;
-        Ok(())
     }
 }
