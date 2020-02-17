@@ -14,7 +14,6 @@ use std::fs::File;
 use std::io::{self, prelude::*, BufWriter};
 use std::path::Path;
 
-#[allow(dead_code)]
 pub struct PPMImg {
     height: u32,
     width: u32,
@@ -24,7 +23,6 @@ pub struct PPMImg {
     data: Vec<RGB>,
 }
 
-#[allow(dead_code)]
 fn create_file(filepath: &str) -> BufWriter<File> {
     let path = Path::new(filepath);
     let display = path.display();
@@ -32,6 +30,11 @@ fn create_file(filepath: &str) -> BufWriter<File> {
         Err(why) => panic!("Could not create {}: {}", display, why),
         Ok(file) => BufWriter::new(file),
     }
+}
+
+fn polar_to_xy(mag: f64, angle_degrees: f64) -> (f64, f64) {
+    let (dx, dy) = angle_degrees.to_radians().sin_cos();
+    (dx * mag, dy * mag)
 }
 
 // impl constructor and exporter
@@ -120,23 +123,12 @@ impl PPMImg {
 }
 
 // impl line algorithm
+#[allow(dead_code)]
 impl PPMImg {
-    fn draw_line_small_slope(x0: i32, y0: i32, x1: i32, y1: i32) {
-        let (dx, dy) = (x1 - x0, y1 - y0);
-        
-
-
-    }
-
     /// Draw a line from (x0, y0) to (x1, y1)
-    pub fn draw_line<T: Into<f64> + Copy>(&mut self, x0: T, y0: T, x1: T, y1: T) {
-        // convert floats to ints; using explicit type conversion
-        // let (x0:i32, y0:i32, x1:i32, y1:i32) = (x0.try_into().unwrap(), y0.try_into().unwrap() , x1.try_into().unwrap(), y1.try_into().unwrap());
-        let x0: i32 = TryInto::<f64>::try_into(x0).unwrap() as i32;
-        let y0: i32 = TryInto::<f64>::try_into(y0).unwrap() as i32;
-        let x1: i32 = TryInto::<f64>::try_into(x1).unwrap() as i32;
-        let y1: i32 = TryInto::<f64>::try_into(y1).unwrap() as i32;
-
+    /// #### impl note:
+    ///    Always add 2A or 2B when updating D. Half of that value will distort line
+    pub fn draw_line(&mut self, x0: f64, y0: f64, x1: f64, y1: f64) {
         // swap variables if needed, since we are always going from left to right
         let (x0, y0, x1, y1) = if x0 > x1 {
             (x1, y1, x0, y0)
@@ -144,26 +136,30 @@ impl PPMImg {
             (x0, y0, x1, y1)
         };
 
+        // force conversion into ints for processing & plotting
+        let (x0, y0, x1, y1) = (x0 as i32, y0 as i32, x1 as i32, y1 as i32);
+
+        // calculate  values and then truncate
+        let (dy, ndx) = (y1 - y0, -(x1 - x0));
+
         let (mut x, mut y) = (x0, y0);
 
-        let (dely, ndelx) = (y1 - y0, -(x1 - x0));
-
         // deal with special cases:
-        if ndelx == 0 {
+        if ndx == 0 {
             // vertical line
             let (y0, y1) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
 
-            for y in y0..(y1 + 1) {
+            for y in y0..=y1 {
                 self.plot(x, y);
             }
 
             return ();
         }
 
-        if dely == 0 {
+        if dy == 0 {
             // horizontal line
             // x vals are already in the right order, so we don't flip
-            for x in x0..(x1 + 1) {
+            for x in x0..=x1 {
                 self.plot(x, y);
             }
             return ();
@@ -174,71 +170,134 @@ impl PPMImg {
 
         // debug!("slope: {}", m);
 
-        if dely > 0 {
-            // slope > 0
-
-            if dely > -ndelx {
-                // 2nd octant
-                debug!("octant 2");
-
-                let mut d = 2 * ndelx + dely;
-                while y <= y1 {
-                    self.plot(x, y);
-                    if d < 0 {
-                        x = x + 1;
-                        d = d + dely;
-                    }
-                    y = y + 1;
-                    d = d + ndelx;
-                }
-            } else {
-                // 1st octant
+        if (y1 - y0).abs() < (x1 - x0).abs() {
+            // octant 1 and 8
+            let mut d = 2 * dy + ndx;
+            let (y_inc, dy) = if dy > 0 {
                 debug!("octant 1");
+                // octant 1
+                (1, dy)
+            } else {
+                debug!("octant 8");
+                // octant 8
+                // dy is (-) in octant 8, so flip it to balance out with ndx
+                (-1, -dy)
+            };
 
-                let mut d = 2 * dely + ndelx;
-                while x <= x1 {
-                    self.plot(x, y);
-                    if d > 0 {
-                        y = y + 1;
-                        d = d + ndelx;
-                    }
-                    x = x + 1;
-                    d = d + dely;
+            for x in x0..=x1 {
+                self.plot(x, y);
+                if d > 0 {
+                    y += y_inc;
+                    d += 2 * ndx;
                 }
+                d += 2 * dy;
             }
         } else {
-            // slope < 0
+            // octant 2 and 7
 
-            if dely <= -ndelx {
-                // 8th octant
-                // debug!("octant 8", );
+            let mut d = 2 * ndx + dy;
 
-                let mut d = 2 * dely + ndelx;
-                // let mut d = 2 * ndelx + dely;
-                while x < x1 {
-                    // debug!("Plotting");
-                    self.plot(x, y);
-                    if d < 0 {
-                        y = y - 1;
-                        d = d - ndelx;
-                    }
-                    x = x + 1;
-                    d = d + dely;
-                }
+            let (dy, ystart, yend) = 
+            if dy > 0 {
+                // octant 2
+                debug!("octant 2");
+                (dy, y0, y1)
             } else {
-                debug!("octant 7",);
+                // octant 7
+                debug!("octant 7");
+                // dy is (-), so flip it to make it (+) to balance out with ndx
+                (-dy, y1, y0)
+            };
 
-                let mut d = 2 * ndelx + dely;
-                while y >= y1 {
-                    self.plot(x, y);
-                    if d < 0 {
-                        x = x + 1;
-                        d = d - dely;
-                    }
-                    y = y - 1;
-                    d = d + ndelx;
+            for y in ystart..=yend
+            {
+                self.plot(x, y);
+                if d > 0
+                {
+                    x += 1;
+                    d += 2 * dy;
                 }
+                d += 2 * ndx;
             }
+            
         }
+    }
+
+    /// Draw a line from (x0, y0) with a certain magnitude and angle
+    /// ## Note
+    /// Angle goes counter clockwise from x axis.
+    ///
+    /// Returns the other endpoint of the line (x1, y1) as a tuple
+    pub fn draw_line_degrees(
+        &mut self,
+        x0: f64,
+        y0: f64,
+        angle_degrees: f64,
+        mag: f64,
+    ) -> (f64, f64) {
+        let (dx, dy) = polar_to_xy(mag, angle_degrees);
+        let (x1, y1) = (x0 + dx, y0 + dy);
+
+        self.draw_line(x0, y0, x1, y1);
+        return (x1, y1);
+    }
+}
+
+pub struct Turtle {
+    pub x: i32,
+    pub y: i32,
+    pub angle_deg: f64,
+    pub pen_down: bool,
+    img: PPMImg,
+}
+
+// impl turtle on Img
+impl PPMImg {
+    /// Creates a turtle for PPMImg
+    /// ## Warning
+    /// Img will move into a Turtle, so any new bindings to the current instance of PPMImg will be invalid.
+    ///
+    /// And therefore only one Turtle is allowed at a time for an Img.
+    pub fn new_turtle_at(self, x: i32, y: i32) -> Turtle {
+        Turtle {
+            x,
+            y,
+            angle_deg: 0.0,
+            pen_down: false,
+            img: self,
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl Turtle {
+    pub fn forward(&mut self, steps: i32) {
+        let (x0, y0) = (self.x, self.y);
+        let (dx, dy) = polar_to_xy(steps.into(), self.angle_deg);
+        let (x1, y1) = (x0 as f64 + dx, y0 as f64 + dy);
+        if self.pen_down {
+            self.img.draw_line(x0 as f64, y0 as f64, x1, y1);
+        }
+        self.x = x1 as i32;
+        self.y = y1 as i32;
+    }
+
+    pub fn turn(&mut self, angle_deg: f64) {
+        self.angle_deg += angle_deg;
+    }
+
+    pub fn set_color(&mut self, rgb: RGB) {
+        self.img.fg_color = rgb;
+    }
+
+    pub fn get_color(&self) -> RGB {
+        return self.img.fg_color;
+    }
+
+    /// Get the inner PPMImg instance
+    ///
+    /// This method will move the turtle
+    pub fn get_ppm_img(self) -> PPMImg {
+        return self.img;
     }
 }
