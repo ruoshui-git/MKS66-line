@@ -1,4 +1,3 @@
-use log::debug;
 use std::convert::Into;
 
 #[allow(dead_code)]
@@ -33,7 +32,7 @@ fn create_file(filepath: &str) -> BufWriter<File> {
 }
 
 fn polar_to_xy(mag: f64, angle_degrees: f64) -> (f64, f64) {
-    let (dx, dy) = angle_degrees.to_radians().sin_cos();
+    let (dy, dx) = angle_degrees.to_radians().sin_cos();
     (dx * mag, dy * mag)
 }
 
@@ -111,13 +110,11 @@ impl PPMImg {
         {
             return ();
         }
-        // debug!("plotting ({}, {})", x, y);
         // now we know that x and y are positive, we can cast without worry
         let index = self.index(x as u32, y as u32);
         self.data[index] = self.fg_color;
     }
     fn index(&self, x: u32, y: u32) -> usize {
-        // debug!("Index: {}", x * self.width as u32 + y);
         (y * self.width as u32 + x).try_into().unwrap()
     }
 }
@@ -137,12 +134,10 @@ impl PPMImg {
         };
 
         // force conversion into ints for processing & plotting
-        let (x0, y0, x1, y1) = (x0 as i32, y0 as i32, x1 as i32, y1 as i32);
+        let (x0, y0, x1, y1) = (x0.round() as i32, y0.round() as i32, x1.round() as i32, y1.round() as i32);
 
         // calculate  values and then truncate
         let (dy, ndx) = (y1 - y0, -(x1 - x0));
-
-        let (mut x, mut y) = (x0, y0);
 
         // deal with special cases:
         if ndx == 0 {
@@ -150,7 +145,7 @@ impl PPMImg {
             let (y0, y1) = if y0 < y1 { (y0, y1) } else { (y1, y0) };
 
             for y in y0..=y1 {
-                self.plot(x, y);
+                self.plot(x0, y);
             }
 
             return ();
@@ -160,7 +155,7 @@ impl PPMImg {
             // horizontal line
             // x vals are already in the right order, so we don't flip
             for x in x0..=x1 {
-                self.plot(x, y);
+                self.plot(x, y0);
             }
             return ();
         }
@@ -168,17 +163,15 @@ impl PPMImg {
         // find A and B
         // let m  = -dely as f64 / ndelx as f64;
 
-        // debug!("slope: {}", m);
+        let (x, mut y) = (x0, y0);
 
         if (y1 - y0).abs() < (x1 - x0).abs() {
             // octant 1 and 8
             let mut d = 2 * dy + ndx;
             let (y_inc, dy) = if dy > 0 {
-                debug!("octant 1");
                 // octant 1
                 (1, dy)
             } else {
-                debug!("octant 8");
                 // octant 8
                 // dy is (-) in octant 8, so flip it to balance out with ndx
                 (-1, -dy)
@@ -194,19 +187,18 @@ impl PPMImg {
             }
         } else {
             // octant 2 and 7
+            // flipping x and y should work out
 
-            let mut d = 2 * ndx + dy;
+            let mut d = 2 * -ndx - dy;
 
-            let (dy, ystart, yend) = 
+            let (x_inc, mut x, ystart, yend, dy) = 
             if dy > 0 {
                 // octant 2
-                debug!("octant 2");
-                (dy, y0, y1)
+                (1, x, y0, y1, dy)
             } else {
                 // octant 7
-                debug!("octant 7");
-                // dy is (-), so flip it to make it (+) to balance out with ndx
-                (-dy, y1, y0)
+                // swap -x and y to reflect over y=-x into octant 8
+                (-1, x - ndx, y1, y0, -dy)
             };
 
             for y in ystart..=yend
@@ -214,10 +206,10 @@ impl PPMImg {
                 self.plot(x, y);
                 if d > 0
                 {
-                    x += 1;
-                    d += 2 * dy;
+                    x += x_inc;
+                    d -= 2 * dy;
                 }
-                d += 2 * ndx;
+                d -= 2 * ndx;
             }
             
         }
@@ -244,8 +236,8 @@ impl PPMImg {
 }
 
 pub struct Turtle {
-    pub x: i32,
-    pub y: i32,
+    x: f64,
+    y: f64,
     pub angle_deg: f64,
     pub pen_down: bool,
     img: PPMImg,
@@ -258,7 +250,7 @@ impl PPMImg {
     /// Img will move into a Turtle, so any new bindings to the current instance of PPMImg will be invalid.
     ///
     /// And therefore only one Turtle is allowed at a time for an Img.
-    pub fn new_turtle_at(self, x: i32, y: i32) -> Turtle {
+    pub fn new_turtle_at(self, x: f64, y: f64) -> Turtle {
         Turtle {
             x,
             y,
@@ -278,12 +270,12 @@ impl Turtle {
         if self.pen_down {
             self.img.draw_line(x0 as f64, y0 as f64, x1, y1);
         }
-        self.x = x1 as i32;
-        self.y = y1 as i32;
+        self.x = x1;
+        self.y = y1;
     }
 
-    pub fn turn(&mut self, angle_deg: f64) {
-        self.angle_deg += angle_deg;
+    pub fn turn_rt(&mut self, angle_deg: f64) {
+        self.angle_deg = (self.angle_deg + angle_deg) % 360.0;
     }
 
     pub fn set_color(&mut self, rgb: RGB) {
@@ -292,6 +284,16 @@ impl Turtle {
 
     pub fn get_color(&self) -> RGB {
         return self.img.fg_color;
+    }
+
+    pub fn move_to(&mut self, x: f64, y:f64)
+    {
+        if self.pen_down
+        {
+            self.img.draw_line(self.x as f64, self.y as f64, x, y);
+        }
+        self.x = x;
+        self.y = y;
     }
 
     /// Get the inner PPMImg instance

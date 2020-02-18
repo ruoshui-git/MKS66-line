@@ -1,58 +1,79 @@
-// use std::env::args;
-
 mod graphics;
 use graphics::{PPMImg, RGB};
-use log::debug;
-use env_logger;
 
-
-fn main()
-{
-
-    
-    env_logger::init();
-
-    debug!("debug enabled!");
+fn main() {
 
     let mut img = PPMImg::new(1024, 1024, 255);
-    img.fg_color = RGB{red: 0, green: 0 , blue: 0};
-    img.plot(5, 6);
-    img.draw_line(300.0, 1024.0, 724.0, 0.0);
-    // img.draw_line(0.0, 0.0, 25.0, 50.0);
-    // img.draw_line(10, 450, 480, 30);
-    // for i in 1..1024
-    // {
-    //     // img.draw_line(10, i, 480, 500 - i);
-    //     img.draw_line(1000, 1024 - i + 1, 24, i);
-    // }.
-    // img.draw_line(200, 49.0, 0.0, 0.0);
+
+    let mut color = RGB {
+        red: 0,
+        green: 50,
+        blue: 255,
+    };
     
-    let mut turtle = img.new_turtle_at(500, 800);
-    turtle.angle_deg = 90.0;
-    turtle.set_color(RGB{red: 0, blue: 0, green: 0});
+    for i in (0..1024).step_by(64)
+    {
+        img.draw_line(0.0, i as f64, 1023.0, 1023.0 - i as f64);
+        color.blue -= 10;
+        color.red += 10;
+        img.fg_color = color;
+        img.draw_line(i as f64, 0.0, 1023.0 - i as f64, 1023.0);
+    }
+
+    img.draw_line(0.0, 1023.0, 1023.0, 0.0);
+
+    let mut turtle = img.new_turtle_at(512.0, 512.0);
+    turtle.angle_deg = 180.0;
+    turtle.set_color(RGB {
+        red: 255,
+        blue: 0,
+        green: 0,
+    });
     turtle.pen_down = true;
 
-    for n in 19..20
-    {
-        for _ in 0..n
-        {
-            turtle.forward(100);
-            turtle.turn(360.0 / n as f64);
-            // let mut color = turtle.color();
-            // color.blue += 50;
-            // turtle.set_color(color);
-            debug!("angle: {}", turtle.angle_deg);
-        }
+    let factor = 300.0;
 
+    for a in 1..5000 {
+        turtle.forward(
+            (a as f64 / factor / ((a as f64 % (std::f64::consts::PI * 2.0)).sin() + 1.5).round())
+                as i32,
+        );
+        turtle.turn_rt(1.0);
     }
-    // for _ in 0..180
-    // {
-    //     turtle.forward(5);
-    //     turtle.turn(-2.0);
-    //     println!("position: {} {}, angle: {}", turtle.x, turtle.y, turtle.angle_deg);
-    // }
+
+    turtle.pen_down = false;
+    turtle.move_to(512.0, 512.0);
+    turtle.pen_down = true;
+    turtle.set_color(RGB{red: 0, blue: 255, green: 255});
+
+    for a in 1..5000 {
+        turtle.forward(
+            (a as f64 / factor / ((a as f64 % (std::f64::consts::PI * 2.0)).cos() + 1.5).round())
+                as i32,
+        );
+        turtle.turn_rt(1.0);
+    }
 
     let img = turtle.get_ppm_img();
 
     img.write_ascii("img.ppm").expect("Error writing to file");
 }
+
+
+
+// if false
+// {
+//     for n in 3..5
+//     {
+//         for _ in 0..n
+//         {
+//             if n == 2 { break; }
+//             turtle.forward(100);
+//             turtle.turn_rt(360.0 / n as f64);
+//             let mut color = turtle.get_color();
+//             color.red += 50;
+//             turtle.set_color(color);
+//             debug!("angle: {}", turtle.angle_deg);
+//         }
+//     }
+// }
