@@ -1,6 +1,6 @@
 .PHONY: run convert clean
 
-CONV = magick
+CONV = convert
 
 run:
 	cargo run
